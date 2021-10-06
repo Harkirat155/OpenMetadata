@@ -54,14 +54,18 @@ def get_column_type(status: SourceStatus, dataset_name: str, column_type: Any) -
             if isinstance(column_type, sql_type):
                 type_class = "NULL"
                 break
-    if type_class is None and column_type in ['CHARACTER VARYING', 'CHAR']:
-        type_class = 'VARCHAR'
     if type_class is None:
-        status.warning(
-            dataset_name, f"unable to map type {column_type!r} to metadata schema"
-        )
-        type_class = "NULL"
-
+        if column_type in ['CHARACTER VARYING', 'CHAR']:
+            type_class = 'VARCHAR'
+        elif column_type in ['INT64']:
+            type_class = 'BIGINT'
+        elif column_type in ['STRING']:
+            type_class = 'STRING'
+        if type_class is None:
+            status.warning(
+                    dataset_name, f"unable to map type {column_type!r} to metadata schema"
+            )
+            type_class = "NULL"
     return type_class
 
 
@@ -99,11 +103,12 @@ def _handle_complex_data_types(status,dataset_name,raw_type: str, level=0):
             col_type = raw_type
         else:
             col_type = raw_type.lstrip('<').split(':', 1)[0]
-    if re.match(r'(struct)(.*)', col_type):
+    if col_type.startswith('struct'):
         children = []
-        col_type = re.match(r'(struct<)(.*)', col_type).groups()[1]
+        struct_type, col_type = re.match(r'(struct<)(.*)', col_type).groups()
         pluck_index = get_last_index(col_type)
         pluck_nested = col_type[:pluck_index+1]
+        col['dataTypeDisplay'] = struct_type+pluck_nested
         while pluck_nested != '':
             col['dataType'] = 'STRUCT'
             plucked = col_type[:get_last_index(col_type)]

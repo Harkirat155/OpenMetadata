@@ -13,6 +13,7 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 import logging
+import traceback
 import uuid
 import re
 from abc import abstractmethod
@@ -227,6 +228,8 @@ class SQLSource(Source):
                 )
                 yield table_and_db
             except Exception as err:
+                logger.error(traceback.format_exc())
+                logger.error(traceback.print_exc())
                 logger.error(err)
                 self.status.failures.append('{}.{}'.format(self.config.service_name, table_name))
                 continue
@@ -318,8 +321,6 @@ class SQLSource(Source):
                 if 'raw_data_type' in column and 'raw_data_type' is not None:
                     if re.match(r'(struct<)(?:.*)', column['raw_data_type']):
                         col_type = 'STRUCT'
-                        # plucked = re.match(r'(?:struct<)(.*)(?:>)',column['raw_data_type']).groups()[0]
-
                         children = _handle_complex_data_types(
                             self.status, dataset_name, f"{column['name']}:{column['raw_data_type']}"
                         )['children']
@@ -351,24 +352,28 @@ class SQLSource(Source):
                     col_data_length = column['type'].length
                 if col_data_length is None:
                     col_data_length = 1
-                om_column = Column(
-                    name=column['name'],
-                    description=column.get("comment", None),
-                    dataType=col_type,
-                    dataTypeDisplay="{}({})".format(col_type, col_data_length) if data_type_display
-                                                                                  is None else
-                    f"{data_type_display}",
-                    dataLength=col_data_length,
-                    constraint=col_constraint,
-                    ordinalPosition=row_order,
-                    children=children if children is not None else None,
-                    arrayDataType=arr_data_type
-                )
-
+                try:
+                    om_column = Column(
+                        name=column['name'],
+                        description=column.get("comment", None),
+                        dataType=col_type,
+                        dataTypeDisplay="{}({})".format(col_type, col_data_length) if data_type_display
+                                                                                    is None else f"{data_type_display}",
+                        dataLength=col_data_length,
+                        constraint=col_constraint,
+                        ordinalPosition=row_order,
+                        children=children if children is not None else None,
+                        arrayDataType=arr_data_type
+                    )
+                except Exception as err:
+                    logger.error(err)
+                    continue
                 table_columns.append(om_column)
                 row_order = row_order + 1
             return table_columns
         except Exception as err:
+            logger.error(traceback.format_exc())
+            logger.error(traceback.print_exc())
             logger.error("{}: {} {}".format(repr(err), table, err))
 
     def run_data_profiler(
